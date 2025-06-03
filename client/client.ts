@@ -1,11 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
 import * as web3 from "@solana/web3.js";
-import type { Vote } from "../target/types/vote";
+import type { Multisig } from "../target/types/multisig";
 
 // Configure the client to use the local cluster
 anchor.setProvider(anchor.AnchorProvider.env());
 
-const program = anchor.workspace.Vote as anchor.Program<Vote>;
+const program = anchor.workspace.Multisig as anchor.Program<Multisig>;
 
 // Client
 console.log("My address:", program.provider.publicKey.toString());
