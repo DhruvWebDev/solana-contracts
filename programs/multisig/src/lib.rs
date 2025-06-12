@@ -60,6 +60,7 @@ mod multisig {
     }
 
     pub fn execute_tx(ctx: Context<ExecTx>) -> Result<()> {
+        require!(ctx.accounts.tx.did_execute == false, ErrorCode::TxExecuted);
         let approval_count = ctx.accounts.tx.signers.iter().filter(|&&b| b).count() as u64;
         let threshold = ctx.accounts.multisig.threshold;
         require!(approval_count >= threshold, ErrorCode::InsufficientSigners);
@@ -74,15 +75,19 @@ mod multisig {
                 }
                 acc
             }).collect();
-        let multisig_signer: Pubkey = ctx.accounts.multisig_signer.key();
-        let seeds = [
-            multisig_signer.as_ref(),
-            from_ref(&ctx.accounts.multisig.bump),
-        ];
-        let signer_seeds: &[&[&[u8]]] = &[&seeds];
+
+        let multisig_key = ctx.accounts.multisig.key();
+        /*
+        ctx.accounts.multisig.key().as_ref(),
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ creates a temporary value which is freed while still in use
+             &[ctx.accounts.multisig.bump],
+         ];
+         */
+        let seeds = [multisig_key.as_ref(), &[ctx.accounts.multisig.bump]];
+        let signer_seeds = &[&seeds[..]];
         let rem_accs = ctx.remaining_accounts;
         invoke_signed(&ix, rem_accs, signer_seeds)?;
-
+        ctx.accounts.tx.did_execute = true;
         Ok(())
     }
     pub fn approve(ctx: Context<Approve>) -> Result<()> {
@@ -104,7 +109,8 @@ mod multisig {
         {
             return err!(ErrorCode::InvalidThreshold);
         }
-        ctx.accounts.multisig.threshold = new_threshold;
+        let multisig = &mut ctx.accounts.multisig;
+        multisig.threshold = new_threshold;
         Ok(())
     }
     pub fn change_owners(ctx: Context<Auth>, new_owners: Vec<Pubkey>) -> Result<()> {
@@ -114,20 +120,35 @@ mod multisig {
             return err!(ErrorCode::InvalidOwner);
         }
         assert_unique_owners(&new_owners)?;
-        ctx.accounts.multisig.owner = new_owners;
+        let multisig = &mut ctx.accounts.multisig;
+        multisig.owner = new_owners;
         Ok(())
+    }
+    //todo
+
+    pub fn reject_transaction() {
+
+    }
+    pub fn cancel_transaction() {
+
+    }
+    pub fn edit_tx(){
+
     }
 }
 
 // ---------- Accounts ----------
 #[derive(Accounts)]
 pub struct ExecTx<'info> {
+    #[account(mut, signer)]
+    pub multisig: Box<Account<'info, Multisig>>,
+
     #[account(
         seeds = [multisig.key().as_ref()],
         bump = multisig.bump
     )]
-    pub multisig_signer: Signer<'info>,
-    pub multisig: Box<Account<'info, Multisig>>,
+    pub multisig_signer: UncheckedAccount<'info>,
+    #[account(mut)]
     pub tx: Box<Account<'info, Transaction>>,
 }
 
@@ -152,14 +173,16 @@ pub struct CreateTransaction<'info> {
 pub struct Approve<'info> {
     signer: Signer<'info>,
     multisig: Box<Account<'info, Multisig>>,
+    #[account(mut, has_one = multisig)]
     transaction: Box<Account<'info, Transaction>>,
 }
 #[derive(Accounts)]
 pub struct Auth<'info> {
     #[account(mut)]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: Box<Account<'info, Multisig>>,
 
     #[account(
+        mut,
         seeds = [multisig.key().as_ref()],
         bump = multisig.bump,
     )]
@@ -240,4 +263,8 @@ pub enum ErrorCode {
     InvalidOwner,
     #[msg("Not enough owners signed this transaction.")]
     InsufficientSigners,
+    #[msg("Transaction is already executed")]
+    TxExecuted,
 }
+
+// --------------- Events ----------------------------
