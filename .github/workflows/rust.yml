@@ -24,7 +24,7 @@ jobs:
         solana --version
         solana config get
         solana config set --url devnet
-        solana-keygen new -o /home/runner/.config/solana/id.json
+        solana-keygen new --no-passphrase --silent --outfile ~/.config/solana/id.json
         solana airdrop 5
 
     - name: Install Anchor
