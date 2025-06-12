@@ -1,0 +1,41 @@
+name: Multisig CI
+
+on:
+  push:
+    branches: [ "programs/multisig" ]
+  pull_request:
+    branches: [ "programs/multisig" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Solana
+      uses: solana-labs/setup-solana@v1
+      with:
+        solana-version: "1.18.11"
+
+    - name: Setup Anchor
+      run: |
+        cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
+
+    - name: Set Solana to devnet
+      run: solana config set --url devnet
+
+    - name: Generate test keypair
+      run: |
+        solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
+        solana airdrop 5
+
+    - name: Build the Program
+      run: anchor build
+
+    - name: Run Anchor Tests
+      run: anchor test --skip-build
