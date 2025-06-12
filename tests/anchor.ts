@@ -1,57 +1,50 @@
-import BN from "bn.js";
-import * as web3 from "@solana/web3.js";
-import * as anchor from "@coral-xyz/anchor";
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Multisig } from "../target/types/multisig";
-import {
-  SystemProgram,
-  Keypair,
-  PublicKey,
-  TransactionInstruction,
-} from "@solana/web3.js";
-import type { Multisig } from "../target/types/multisig";
-// utils ----------------------
+import { SystemProgram, Keypair, PublicKey } from "@solana/web3.js";
+
+// -------------------- Setup --------------------
 const provider = anchor.AnchorProvider.env();
 anchor.setProvider(provider);
-const wallet = provider.wallet as anchor.Wallet;
-const connection = provider.connection;
 const program = anchor.workspace.Multisig as Program<Multisig>;
-const pid = program.programId;
-//multisig signer and pda ----------------------
-const multisigSigner = web3.Keypair.generate();
-const [multisigPDA, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+const connection = provider.connection;
+const wallet = provider.wallet as anchor.Wallet;
+
+// Multisig Keypairs
+const multisigSigner = Keypair.generate();
+const [multisigPDA, bump] = PublicKey.findProgramAddressSync(
   [multisigSigner.publicKey.toBuffer()],
   program.programId
 );
-let multisigSize = 250;
+console.log(multisigSigner.publicKey.toString());
 
-//tx -----------
-const txAccount = web3.Keypair.generate();
+const txAccount = Keypair.generate();
+const multisigSize = 250;
 const txsize = 1000;
 
-//Mock Accounts --------------
-let ownerA = web3.Keypair.generate();
-let ownerB = web3.Keypair.generate();
-let ownerC = web3.Keypair.generate();
-let ownerD = web3.Keypair.generate();
-describe("test for my multisig contract", async () => {
-  // Configure the client to use the local cluster
-  anchor.setProvider(anchor.AnchorProvider.env());
+// Owners
+const ownerA = Keypair.generate();
+const ownerB = Keypair.generate();
+const ownerC = Keypair.generate();
+const ownerD = Keypair.generate();
+const ownerE = Keypair.generate();
 
-  const program = anchor.workspace.Multisig as anchor.Program<Multisig>;
-  
+describe("test for my multisig contract", () => {
   it("init multisig", async () => {
-    let ownersArr = [
+    const ownersArr = [
       ownerA.publicKey,
       ownerB.publicKey,
       ownerC.publicKey,
       ownerD.publicKey,
     ];
-    const threshold = new anchor.BN(1);
-    const result = await program.methods
+    const threshold = new anchor.BN(3);
+
+    await program.methods
       .initializeMultisig(ownersArr, threshold, bump)
-      .accounts({ multisig: multisigSigner.publicKey })
+      .accounts({
+        multisig: multisigSigner.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
       .preInstructions([
         await program.account.multisig.createInstruction(
           multisigSigner,
@@ -60,29 +53,33 @@ describe("test for my multisig contract", async () => {
       ])
       .signers([multisigSigner])
       .rpc();
-    console.log("here", result);
   });
 
   it("create tx", async () => {
-    const new_owners = [ownerA, ownerB];
-    const accounts = [
-      {
-        pubkey: multisigSigner.publicKey,
-        isWritable: true,
-        isSigner: false,
-      },
-      {
-        pubkey: multisigPDA,
-        isWritable: false,
-        isSigner: true,
-      },
+    const newOwners = [
+      ownerA.publicKey,
+      ownerB.publicKey,
+      ownerC.publicKey,
+      ownerD.publicKey,
+      ownerE.publicKey,
     ];
-    const data = program.coder.instruction.encode("change_owners", {
-      new_owners,
-    });
-    console.log(txAccount);
+    const ixDATA = await program.coder.instruction.encode(
+      "changeOwners",
+      newOwners
+    );
+    const ix = await program.methods
+      .changeOwners(newOwners)
+      .accounts({
+        multisig: multisigSigner.publicKey,
+        multisigSigner: multisigPDA,
+      })
+      .instruction();
+    console.log("-------------------------------------");
+    console.log(ix.data);
+    console.log("--------------------------------------");
+    // Use the correct program ID, accounts and data
     await program.methods
-      .createTx(pid, data, accounts)
+      .createTx(ix.programId, ix.data, ix.keys)
       .accounts({
         multisig: multisigSigner.publicKey,
         transaction: txAccount.publicKey,
@@ -95,11 +92,80 @@ describe("test for my multisig contract", async () => {
       .rpc();
   });
 
-  it("approve", () => {
-
+  it("approve tx", async () => {
+    const signers = [ownerB, ownerC, ownerD];
+    for (const s of signers) {
+      await program.methods
+        .approve()
+        .accounts({
+          signer: s.publicKey,
+          multisig: multisigSigner.publicKey,
+          transaction: txAccount.publicKey,
+        })
+        .signers([s])
+        .rpc();
+    }
   });
 
-  it("exec tx", () => {
-    
+  it("exec tx", async () => {
+    const newOwners = [
+      ownerA.publicKey,
+      ownerB.publicKey,
+      ownerC.publicKey,
+      ownerD.publicKey,
+      ownerE.publicKey,
+    ];
+
+    // Create the same instruction again
+    const ix = await program.methods
+      .changeOwners(newOwners)
+      .accounts({
+        multisig: multisigSigner.publicKey,
+        multisigSigner: multisigPDA,
+      })
+      .instruction();
+
+    // Properly map keys to `remainingAccounts`
+    const remaining = ix.keys.map((k) => ({
+      pubkey: k.pubkey,
+      isSigner: !k.pubkey.equals(multisigPDA), // Only PDA signs
+      isWritable: k.isWritable,
+    }));
+
+    remaining.push({
+      pubkey: program.programId,
+      isSigner: false,
+      isWritable: false,
+    });
+    try {
+      const res = await program.methods
+        .executeTx()
+        .accounts({
+          multisig: multisigSigner.publicKey,
+          multisigSigner: multisigPDA,
+          tx: txAccount.publicKey,
+        })
+        .remainingAccounts(remaining)
+        .signers([multisigSigner])
+        .rpc(); // Do not sign with PDA
+
+      console.log(res);
+    } catch (error) {
+      console.log(error);
+    }
+
+    let multisigAccount = await program.account.multisig.fetch(
+      multisigSigner.publicKey
+    );
+    console.log(
+      multisigAccount.owner.length,
+      multisigAccount.owner.forEach((s) => {
+        console.log(s.toString());
+      })
+    );
+    // assert.strictEqual(multisigAccount.owner.length, 5);
+
+    let txAcc = await program.account.transaction.fetch(txAccount.publicKey);
+    console.log(txAcc);
   });
 });
