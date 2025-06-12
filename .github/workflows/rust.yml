@@ -1,0 +1,33 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "programs/multisig" ]
+  pull_request:
+    branches: [ "programs/multisig" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Necessary Dependencies
+      run: curl --proto '=https' --tlsv1.2 -sSfL https://solana-install.solana.workers.dev | bash
+    - name: 
+      run: |
+       solana config get 
+       solana config set --url devnet
+       solana-keygen new
+       solana address
+       solana airdrop 5
+    - name: Build the Program
+      run: anchor build 
+    - name: Deploy the contract to the mainnet
+      run: anchor deploy
+    - name: test the contract
+      run: anchor test
