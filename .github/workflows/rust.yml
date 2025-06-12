@@ -17,19 +17,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Solana
-      uses: solana-labs/setup-solana@v1
-      with:
-        solana-version: "1.18.11"
-
-    - name: Setup Anchor
+    - name: Install Solana CLI
       run: |
-        cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
+        sh -c "$(curl -sSfL https://release.solana.com/v1.18.11/install)"
+        echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+    - name: Install Anchor
+      run: cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
 
     - name: Set Solana to devnet
       run: solana config set --url devnet
 
-    - name: Generate test keypair
+    - name: Create keypair and airdrop
       run: |
         solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
         solana airdrop 5
