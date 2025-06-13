@@ -10,28 +10,45 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-and-test:
+  test-and-build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install Solana CLI
-      run: |
-        sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
-        export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
-        solana --version
-        solana config get
-        solana config set --url devnet
-        solana-keygen new --no-passphrase --silent --outfile ~/.config/solana/id.json
-        solana airdrop 5
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
 
-    - name: Install Anchor
-      run: cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
 
-    - name: Build the Program
-      run: anchor build
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-    - name: Run Anchor Tests
-      run: anchor test --skip-build
+      - uses: metadaoproject/setup-anchor@v2
+        with:
+          anchor-version: '0.30.1'
+          node-version: '20'
+          solana-cli-version: '1.18.9'
+
+      - name: Generate new keypair
+        run: solana-keygen new --no-bip39-passphrase
+
+      - name: Set solana target cluster to local
+        run: solana config set --url http://localhost:8899
+
+      - name: Check solana config
+        run: solana config get
+
+      - run: pnpm run anchor build
+        shell: bash
+
+      - run: pnpm run anchor test
+        shell: bash
