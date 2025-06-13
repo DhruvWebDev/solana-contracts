@@ -29,7 +29,10 @@ jobs:
           solana-cli-version: '1.18.9'
 
       - name: Generate new keypair
-        run: solana-keygen new --no-bip39-passphrase
+        run: | 
+            solana keygen new --no-bip39-passphrase
+            solana addresss
+            solana balance
 
       - name: Set solana target cluster to local
         run: solana config set --url http://localhost:8899
