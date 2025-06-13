@@ -49,8 +49,8 @@ jobs:
         run: solana config get
         shell: bash
 
-      - run: npm run anchor build
+      - run: anchor build
         shell: bash
 
-      - run: npm run anchor test
+      - run: anchor test
         shell: bash
